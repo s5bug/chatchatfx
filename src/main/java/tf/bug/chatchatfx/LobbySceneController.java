@@ -109,7 +109,8 @@ public class LobbySceneController extends VBox implements Initializable {
                     this.lastRefresh = now;
                 }
 
-                if(this.lastRefresh - now > period) {
+                if(now - this.lastRefresh > period) {
+                    this.lastRefresh = now;
                     LobbySceneController.this.autoRefreshTimer.stop();
                     LobbySceneController.this.refresh();
                     LobbySceneController.this.autoRefreshProgressBar.setProgress(0.0);

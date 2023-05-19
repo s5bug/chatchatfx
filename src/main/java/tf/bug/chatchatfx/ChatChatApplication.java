@@ -12,6 +12,7 @@ public class ChatChatApplication extends Application {
     @Override
     public void start(Stage stage) throws IOException {
         HttpClient httpClient = HttpClient.newBuilder()
+                .followRedirects(HttpClient.Redirect.ALWAYS)
                 .build();
 
         LobbySceneController lsc = new LobbySceneController(httpClient);
