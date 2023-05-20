@@ -13,6 +13,8 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ResourceBundle;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import javafx.animation.AnimationTimer;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -87,6 +89,8 @@ public class LobbySceneController extends VBox implements Initializable {
             we.consume();
         });
 
+        this.refresh();
+
         this.refreshButton.addEventHandler(MouseEvent.MOUSE_CLICKED, (MouseEvent me) -> {
             this.refresh();
         });
@@ -94,38 +98,50 @@ public class LobbySceneController extends VBox implements Initializable {
         final long period = Duration.ofSeconds(10).toNanos();
         this.autoRefreshTimer = new AnimationTimer() {
 
-            long lastCheck = 0;
             long lastRefresh = 0;
+
+            boolean justStarted = false;
+
+            @Override
+            public void start() {
+                super.start();
+                this.justStarted = true;
+            }
 
             @Override
             public void handle(long now) {
-                long remainder = now % period;
-                double progress = ((double) remainder) / ((double) period);
+                if(this.justStarted) {
+                    this.lastRefresh = now;
+                    this.justStarted = false;
+                    return;
+                }
+
+                long elapsed = (now - lastRefresh);
+                double progress = ((double) elapsed) / ((double) period);
 
                 LobbySceneController.this.autoRefreshProgressBar.setProgress(progress);
 
-                if(now < this.lastCheck) {
-                    // overflow
-                    this.lastRefresh = now;
-                }
-
                 if(now - this.lastRefresh > period) {
-                    this.lastRefresh = now;
-                    LobbySceneController.this.autoRefreshTimer.stop();
-                    LobbySceneController.this.refresh();
-                    LobbySceneController.this.autoRefreshProgressBar.setProgress(0.0);
+                    this.stop();
+                    LobbySceneController.this.refresh().whenComplete((v, t) -> {
+                        this.start();
+                    });
                 }
+            }
 
-                this.lastCheck = now;
+            @Override
+            public void stop() {
+                super.stop();
+                LobbySceneController.this.autoRefreshProgressBar.setProgress(0.0);
             }
         };
 
-        this.refresh();
+        this.autoRefreshTimer.start();
     }
 
-    private void refresh() {
-        this.httpClient.sendAsync(this.roomsRequest, HttpResponse.BodyHandlers.ofInputStream())
-                .thenAccept(hr -> {
+    private CompletableFuture<Void> refresh() {
+        return this.httpClient.sendAsync(this.roomsRequest, HttpResponse.BodyHandlers.ofInputStream())
+                .thenCompose(hr -> {
                     JsonParser jp = JsonProvider.provider().createParser(hr.body());
                     jp.next();
                     JRooms jr = JRooms.decode(jp.getValue());
@@ -133,8 +149,13 @@ public class LobbySceneController extends VBox implements Initializable {
                             jr.rooms().stream()
                                     .map(room -> new RoomEntryModel(room.id(), room.name(), room.cats(), room.hasPassword()))
                                     .toList();
-                    Platform.runLater(() -> this.rlm.roomsProperty().setAll(rems));
-                    this.autoRefreshTimer.start();
+
+                    CompletableFuture<Void> setComplete = new CompletableFuture<>();
+                    Platform.runLater(() -> {
+                        this.rlm.roomsProperty().setAll(rems);
+                        setComplete.complete(null);
+                    });
+                    return setComplete;
                 }).exceptionally(t -> { t.printStackTrace(); return null; });
     }
 }
