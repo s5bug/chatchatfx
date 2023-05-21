@@ -79,13 +79,18 @@ public class PlayerModel {
             boolean isNapping = ((data >>> 2) & 0x01) != 0;
             Facing facing = Facing.values()[(data >>> (0)) & 0x03];
 
-            PlayerModel toUpdate = into.computeIfAbsent(id, _id -> new PlayerModel());
-            toUpdate.xProperty().set(x);
-            toUpdate.yProperty().set(y);
-            toUpdate.colorProperty().set(color);
-            toUpdate.isDogProperty().set(isDog);
-            toUpdate.isNappingProperty().set(isNapping);
-            toUpdate.facingProperty().setValue(facing);
+            PlayerModel toUpdate = into.get(id);
+            if(toUpdate != null) {
+                toUpdate.xProperty().set(x);
+                toUpdate.yProperty().set(y);
+                toUpdate.colorProperty().set(color);
+                toUpdate.isDogProperty().set(isDog);
+                toUpdate.isNappingProperty().set(isNapping);
+                toUpdate.facingProperty().setValue(facing);
+            } else {
+                PlayerModel newPlayer = new PlayerModel(x, y, color, facing, isDog, isNapping);
+                into.put(id, newPlayer);
+            }
         }
 
         from.order(prev);

@@ -13,4 +13,6 @@ module tf.bug.chatchatfx {
     opens tf.bug.chatchatfx.model to javafx.fxml;
     exports tf.bug.chatchatfx.control;
     opens tf.bug.chatchatfx.control to javafx.fxml;
+    opens tf.bug.chatchatfx.game to javafx.fxml;
+    exports tf.bug.chatchatfx.game;
 }
