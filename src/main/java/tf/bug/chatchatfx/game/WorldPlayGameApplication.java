@@ -1,40 +1,34 @@
 package tf.bug.chatchatfx.game;
 
-import com.almasb.fxgl.app.FXGLApplication;
 import com.almasb.fxgl.app.GameApplication;
 import com.almasb.fxgl.app.GameSettings;
-import com.almasb.fxgl.app.MainWindow;
 import com.almasb.fxgl.dsl.FXGL;
 import com.almasb.fxgl.entity.Entity;
+import com.almasb.fxgl.entity.level.Level;
+import com.almasb.fxgl.entity.level.tiled.TMXLevelLoader;
 import com.almasb.fxgl.input.UserAction;
 import com.tobiasdiez.easybind.EasyBind;
 import com.tobiasdiez.easybind.EasyBinding;
+import com.tobiasdiez.easybind.Subscription;
 import com.tobiasdiez.easybind.optional.ObservableOptionalValue;
 import com.tobiasdiez.easybind.optional.OptionalBinding;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
-import java.util.HexFormat;
+import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.function.Consumer;
 import javafx.application.Platform;
-import javafx.beans.binding.Bindings;
-import javafx.beans.property.IntegerProperty;
+import javafx.beans.Observable;
+import javafx.beans.binding.ObjectBinding;
 import javafx.beans.property.MapProperty;
 import javafx.beans.property.SimpleMapProperty;
-import javafx.beans.value.ChangeListener;
-import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.MapChangeListener;
-import javafx.collections.ObservableMap;
 import javafx.geometry.Point2D;
-import javafx.geometry.Point3D;
 import javafx.scene.input.KeyCode;
-import javafx.scene.input.MouseButton;
 import javafx.scene.input.ScrollEvent;
 import tf.bug.chatchatfx.model.Facing;
 import tf.bug.chatchatfx.model.GameStateModel;
@@ -67,11 +61,21 @@ public class WorldPlayGameApplication extends GameApplication {
         settings.setWidth(800);
         settings.setHeight(600);
         settings.setManualResizeEnabled(true);
+        settings.setScaleAffectedOnResize(false);
         settings.setTitle("Chat Chat: %s".formatted(this.rem.getRoomName()));
     }
 
     @Override
     protected void initGame() {
+        TMXLevelLoader ll = new TMXLevelLoader(false);
+        Level l = ll.load(WorldPlayGameApplication.class.getResource("chatchat-map.tmx"), FXGL.getGameWorld());
+        l.getEntities().forEach(ent -> {
+            ent.setScaleX(1.0 / 16.0);
+            ent.setScaleY(1.0 / 16.0);
+            ent.setPosition(Point2D.ZERO);
+            FXGL.getGameWorld().addEntity(ent);
+        });
+
         URI wsUri = URI.create(
                 "wss://chatchat.nfshost.com/ws/?roomid=%d&name=%s&pass=".formatted(
                         this.rem.getRoomId(),
@@ -83,8 +87,8 @@ public class WorldPlayGameApplication extends GameApplication {
 
         this.webSocket = new GameWebsocket(this.httpClient, wsUri, this.gameState, onError);
 
-        EasyBinding<Optional<PlayerModel>> meOptional = EasyBind.mapObservable(this.gameState.meIdProperty(), mid -> EasyBind.valueAt(this.gameState.playersProperty(), mid.intValue()));
-        EasyBinding<PlayerModel> me = EasyBind.map(meOptional, op -> op.orElseGet(PlayerModel::new));
+        ObjectBinding<PlayerModel> meNullable = this.gameState.playersProperty().valueAt(EasyBind.map(this.gameState.meIdProperty(), Number::intValue));
+        EasyBinding<PlayerModel> me = EasyBind.map(meNullable, x -> Objects.requireNonNullElseGet(x, PlayerModel::new));
         EasyBinding<Integer> meX = me.mapObservable(PlayerModel::xProperty).map(Number::intValue);
         EasyBinding<Integer> meY = me.mapObservable(PlayerModel::yProperty).map(Number::intValue);
 
@@ -129,12 +133,18 @@ public class WorldPlayGameApplication extends GameApplication {
             }
             if(change.wasAdded()) {
                 Entity ent = FXGL.entityBuilder()
-                        .viewWithBBox("missing-texture")
-                        .scale(1.0 / 16.0, 1.0 / 16.0)
+                        .view("missing-texture")
                         .build();
+
+                ent.setScaleX(1.0 / 16.0);
+                ent.setScaleY(1.0 / 16.0);
 
                 ent.xProperty().bind(EasyBind.map(change.getValueAdded().xProperty(), Number::doubleValue));
                 ent.yProperty().bind(EasyBind.map(change.getValueAdded().yProperty(), Number::doubleValue));
+
+                if(change.getKey() == this.gameState.getMeId()) {
+                    FXGL.getGameScene().getViewport().bindToEntity(ent, FXGL.getGameScene().getViewport().getWidth() / 2, FXGL.getGameScene().getViewport().getHeight() / 2);
+                }
 
                 Platform.runLater(() -> FXGL.getGameWorld().addEntity(ent));
 
@@ -143,7 +153,7 @@ public class WorldPlayGameApplication extends GameApplication {
         });
 
         double[] zooms = { 0.015625, 0.03125, 0.046875, 0.0625, 0.09375, 0.125, 0.1875, 0.25, 0.325, 0.5, 0.75, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0 };
-        final int[] zoomLevel = {7};
+        final int[] zoomLevel = {11};
         FXGL.getInput().addEventHandler(ScrollEvent.SCROLL, ev -> {
             if(ev.getDeltaX() == 0.0) {
                 int oldZoomLevel = zoomLevel[0];
@@ -160,6 +170,17 @@ public class WorldPlayGameApplication extends GameApplication {
             }
         });
         FXGL.getGameScene().getViewport().setZoom(zooms[zoomLevel[0]] * 16.0d);
+
+        ObjectBinding<Entity> meEntNullable = cats.valueAt(EasyBind.map(this.gameState.meIdProperty(), Number::intValue));
+        ObservableOptionalValue<Entity> meEnt = EasyBind.wrapNullable(meEntNullable);
+        ObservableOptionalValue<Point2D> meLoc =
+                meEnt.mapObservable(e ->
+                        EasyBind.combine(e.xProperty(), e.yProperty(), (x, y) -> new Point2D(x.doubleValue(), y.doubleValue())));
+        meLoc.subscribeToValues(p2d -> {
+            double w = FXGL.getGameScene().getViewport().getWidth();
+            double h = FXGL.getGameScene().getViewport().getHeight();
+            FXGL.getGameScene().getViewport().focusOn(p2d.subtract(w / 2, h / 2).add(0.5, 0.5));
+        });
     }
 
     private void sendMovementPacket(int hereX, int hereY, Facing direction) {

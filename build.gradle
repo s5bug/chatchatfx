@@ -26,7 +26,7 @@ tasks.withType(JavaCompile) {
 
 application {
     mainModule = 'tf.bug.chatchatfx'
-    mainClass = 'tf.bug.chatchatfx.HelloApplication'
+    mainClass = 'tf.bug.chatchatfx.ChatChatApplication'
 }
 
 javafx {
